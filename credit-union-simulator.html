@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ledger — Credit Union Turnaround Simulation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#EDF0EC; --surface:#FFFFFF; --ink:#1C2B27; --muted:#66716C; --rule:#D3D9D2; --rule-strong:#AEB8B0;
+  --seal:#1F6F5B; --seal-soft:#DCEBE4; --gold:#C9962E; --gold-soft:#F6EBCF; --red:#B4463A; --red-soft:#F5E1DD; --green:#2D8A5E;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif; --serif:"Fraunces",Georgia,"Times New Roman",serif;
+  --rail:232px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.45;font-variant-numeric:tabular-nums}
+button,input,select{font:inherit;color:inherit}
+h1,h2,h3{font-family:var(--serif);font-weight:600;margin:0;line-height:1.15}
+h1{font-size:30px}h2{font-size:22px}h3{font-size:17px}
+a{color:var(--seal)}
+.num{font-variant-numeric:tabular-nums}
+.pos{color:var(--green)}.neg{color:var(--red)}.warn{color:var(--gold)}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+/* layout */
+#app{display:grid;grid-template-columns:var(--rail) 1fr;min-height:100vh}
+#rail{background:var(--surface);border-right:1px solid var(--rule);padding:22px 18px;position:sticky;top:0;height:100vh;overflow:auto;display:flex;flex-direction:column;gap:6px}
+#rail .brand{font-family:var(--serif);font-size:24px;font-weight:700;letter-spacing:-.01em;margin-bottom:2px}
+#rail .brand small{display:block;font-family:var(--sans);font-size:12px;font-weight:500;color:var(--muted);letter-spacing:0}
+#rail .group{margin-top:14px;font-size:12px;color:var(--muted);padding-left:10px}
+#rail button.nav{display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;background:none;border:0;padding:8px 10px;border-radius:6px;cursor:pointer;color:var(--ink)}
+#rail button.nav:hover{background:var(--paper)}
+#rail button.nav.active{background:var(--seal-soft);color:var(--seal);font-weight:600}
+#rail .dot{width:8px;height:8px;border-radius:50%;background:var(--rule-strong);flex:none}
+#rail .dot.ok{background:var(--green)}
+#rail .spacer{flex:1}
+#main{padding:26px 34px 60px;max-width:1180px;width:100%;min-width:0}
+#topbar{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;padding-bottom:16px;border-bottom:1px solid var(--rule-strong);margin-bottom:22px;flex-wrap:wrap}
+#topbar .qstrip{display:flex;gap:4px;align-items:flex-end}
+.qstrip .q{width:34px;height:26px;border:1px solid var(--rule-strong);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--muted);background:var(--surface)}
+.qstrip .q.done{background:var(--seal);color:#fff;border-color:var(--seal)}
+.qstrip .q.now{border-color:var(--gold);color:var(--ink);background:var(--gold-soft);font-weight:600}
+.btn{border:1px solid var(--rule-strong);background:var(--surface);padding:8px 14px;border-radius:6px;cursor:pointer;font-weight:500}
+.btn:hover{border-color:var(--ink)}
+.btn.primary{background:var(--seal);border-color:var(--seal);color:#fff}
+.btn.primary:hover{background:#185846}
+.btn.primary:disabled{background:var(--rule-strong);border-color:var(--rule-strong);cursor:not-allowed}
+.btn.danger{color:var(--red);border-color:var(--red)}
+.btn.sm{padding:5px 10px;font-size:13px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+/* panels */
+.panel{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:18px 20px;margin-bottom:18px}
+.panel h2,.panel h3{margin-bottom:10px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.grid2>*,.grid3>*{min-width:0}
+.panel{min-width:0}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+/* stat strip */
+.stats{display:flex;border-top:2px solid var(--ink);border-bottom:1px solid var(--rule);margin:8px 0 18px;flex-wrap:wrap}
+.stat{flex:1 1 130px;padding:12px 14px 10px;border-right:1px solid var(--rule)}
+.stat:last-child{border-right:0}
+.stat .l{font-size:12px;color:var(--muted)}
+.stat .v{font-family:var(--serif);font-size:26px;font-weight:600;line-height:1.1;margin-top:2px}
+.stat .d{font-size:12px;margin-top:3px}
+/* ledger tables */
+table.ledger{width:100%;border-collapse:collapse;font-size:14px}
+table.ledger th,table.ledger td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--rule);vertical-align:middle}
+table.ledger th:first-child,table.ledger td:first-child{text-align:left}
+table.ledger thead th{font-weight:500;color:var(--muted);font-size:12px;border-bottom:1px solid var(--rule-strong)}
+table.ledger tr.total td{font-weight:600;border-top:1px solid var(--ink);border-bottom:2px solid var(--ink)}
+table.ledger tr.sub td:first-child{padding-left:22px;color:var(--muted)}
+table.ledger tr.head td{font-weight:600;padding-top:12px}
+/* decision form */
+.dec{display:grid;grid-template-columns:repeat(3,1fr);gap:0 30px}
+.dec fieldset{border:0;padding:0;margin:0 0 14px}
+.dec legend{font-family:var(--serif);font-size:17px;font-weight:600;padding:0;margin-bottom:6px}
+.row{display:grid;grid-template-columns:1.3fr 88px 74px;gap:8px;align-items:center;padding:5px 0;border-bottom:1px dotted var(--rule)}
+.row:last-child{border-bottom:0}
+.row label{font-size:14px}
+.row label small{display:block;color:var(--muted);font-size:12px}
+.row input[type=number],.row select{width:100%;padding:6px 8px;border:1px solid var(--rule-strong);border-radius:5px;background:#fff;text-align:right}
+.row select{text-align:left}
+.row input:focus,.row select:focus,.btn:focus-visible,#rail button:focus-visible{outline:2px solid var(--seal);outline-offset:1px}
+.row .mkt{font-size:12px;color:var(--muted);text-align:right}
+.row .mkt b{color:var(--ink);font-weight:500}
+.row input[type=checkbox]{width:18px;height:18px;justify-self:end}
+.locked .row input,.locked .row select{background:var(--paper);pointer-events:none;color:var(--muted)}
+.chip{display:inline-block;padding:2px 9px;border-radius:12px;font-size:12px;font-weight:500;background:var(--paper);border:1px solid var(--rule-strong)}
+.chip.ok{background:var(--seal-soft);color:var(--seal);border-color:transparent}
+.chip.wait{background:var(--gold-soft);color:#8a6416;border-color:transparent}
+.chip.bad{background:var(--red-soft);color:var(--red);border-color:transparent}
+.news{border-left:3px solid var(--gold);padding:8px 14px;background:var(--gold-soft);border-radius:0 6px 6px 0;margin-bottom:14px}
+.event{border-left:3px solid var(--seal);padding:8px 14px;background:var(--seal-soft);border-radius:0 6px 6px 0;margin-bottom:8px}
+/* chart */
+.chart{width:100%;height:auto;display:block}
+.chart text{font-family:var(--sans);font-size:11px;fill:var(--muted)}
+.chart .axis{stroke:var(--rule-strong);stroke-width:1}
+.chart .grid{stroke:var(--rule);stroke-width:1}
+.chart .ref{stroke:var(--gold);stroke-dasharray:4 4}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;margin-top:6px}
+.legend span i{display:inline-block;width:12px;height:3px;margin-right:5px;vertical-align:middle}
+/* setup */
+.setup{max-width:720px}
+.setup .field{display:grid;grid-template-columns:200px 1fr;gap:10px;align-items:center;padding:8px 0;border-bottom:1px dotted var(--rule)}
+.setup input[type=text],.setup input[type=number],.setup select{padding:7px 10px;border:1px solid var(--rule-strong);border-radius:5px;width:100%;max-width:340px}
+.teamnames{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tabs{display:flex;flex-wrap:wrap;gap:2px;border-bottom:1px solid var(--rule-strong);margin:4px 0 12px}
+.tabs button{background:none;border:0;padding:8px 12px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button.active{color:var(--ink);border-bottom-color:var(--seal);font-weight:600}
+.rank1{background:var(--gold-soft)}
+.hidden{display:none}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+#mobilenav{display:none}
+@media (max-width:1100px){.dec{grid-template-columns:1fr 1fr}}
+@media (max-width:900px){
+  #app{grid-template-columns:1fr}
+  #rail{display:none}
+  #mobilenav{display:flex;gap:6px;overflow-x:auto;padding:10px 14px;background:var(--surface);border-bottom:1px solid var(--rule);position:sticky;top:0;z-index:5}
+  #mobilenav button{flex:none;border:1px solid var(--rule-strong);background:var(--surface);border-radius:16px;padding:5px 12px;font-size:13px;cursor:pointer}
+  #mobilenav button.active{background:var(--seal);color:#fff;border-color:var(--seal)}
+  #main{padding:16px 14px 50px;overflow-x:hidden}
+  #app{width:100vw;max-width:100%}
+  .grid2,.grid3,.dec,.teamnames{grid-template-columns:1fr}
+  .setup .field{grid-template-columns:1fr}
+  .stat .v{font-size:22px}
+  h1{font-size:24px}
+  .row{grid-template-columns:1fr 78px 62px;gap:6px}
+  .row .mkt{font-size:11px}
+  .panel{padding:14px 14px}
+  .chip{white-space:normal}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div id="mobilenav"></div>
+<div id="app">
+  <nav id="rail"></nav>
+  <main id="main"></main>
+</div>
+<div class="toast" id="toast"></div>
+<input type="file" id="importFile" accept="application/json" class="hidden">
+<script>
+// Credit Union Simulator — economic engine
+// All money in dollars. Rates in percent. One "quarter" step per call.
+
+const DEP = ['checking', 'savings', 'mm', 'cd'];
+const LN = ['auto', 'mortgage', 'card', 'personal'];
+
+const P = {
+  // --- deposits ---
+  depElast:   { checking: 0.6,  savings: 1.6,  mm: 4.0,  cd: 6.0 },   // growth pts per 1pt rate gap
+  depBase:    { checking: 0.9,  savings: 0.4,  mm: -0.3, cd: -0.6 },  // base growth %/qtr at market rate
+  depSens:    { checking: 1.0,  savings: 0.8,  mm: 0.5,  cd: 0.4 },   // sensitivity to marketing/branches/satisfaction
+  notOfferedRunoff: 20,   // %/qtr when product withdrawn
+  // --- loans ---
+  lnElast:    { auto: 3.0,  mortgage: 3.5, card: 1.5, personal: 2.5 }, // orig pts per 1pt cheaper than market
+  lnOrig:     { auto: 9.6,  mortgage: 4.4, card: 7.5, personal: 10.6 }, // originations %/qtr of balance at market
+  lnRunoff:   { auto: 8.0,  mortgage: 3.6, card: 6.0, personal: 9.0 },  // paydowns %/qtr
+  lnSens:     { auto: 0.8,  mortgage: 0.5, card: 0.6, personal: 0.9 },
+  lnCO:       { auto: 0.80, mortgage: 0.15, card: 4.0, personal: 2.5 }, // annualized charge-off % at standard UW
+  uwOrigMult: { tight: 0.80, standard: 1.0, loose: 1.28 },
+  uwLossMult: { tight: 0.70, standard: 1.0, loose: 1.55 },
+  allowancePct: 1.0,
+  // --- fees ---
+  chkPerMember: 0.625,
+  feeWaiverShare: 0.42,
+  nsfPerAcctQtr: 0.55,
+  atmPerAcctQtr: 1.1,
+  interchangePerAcctQtr: 12.0,
+  loanFeePct: 0.05,       // % of loans per quarter (misc loan/other income)
+  // --- opex ---
+  branchCostQtr: 265000,
+  coreCostQtr: 1150000,
+  varOpsPctYr: 0.70,      // % of assets per year
+  branchOpenCost: 1000000,
+  branchCloseCost: 300000,
+  baselineMarketing: 125000,
+  baselineTech: 125000,
+  // --- competition ---
+  compWeight: 0.35,
+  cashPct: 3.0,           // cash as % of deposits
+  fixedAssets: 10000000,
+  borrowCapPct: 25,
+};
+
+function scenario(q, opts) {
+  const fed   = [3.50, 3.50, 3.25, 3.00, 3.00, 2.75, 2.75, 2.50, 2.50, 2.50, 2.75, 2.75, 3.00, 3.00, 3.00, 3.00];
+  const unemp = [4.5, 4.6, 4.9, 5.3, 5.6, 5.4, 5.1, 4.8, 4.7, 4.6, 4.5, 4.5, 4.4, 4.4, 4.4, 4.4];
+  const demand= [1.00, 0.98, 0.93, 0.88, 0.90, 0.96, 1.02, 1.05, 1.05, 1.04, 1.03, 1.02, 1.02, 1.02, 1.02, 1.02];
+  const news = [
+    'Rates hold steady. The regional economy is cooling; auto sales flat, mortgage applications down 6% year over year.',
+    'Consumer confidence dips. Local employers announce hiring freezes. Members are shopping CD rates aggressively.',
+    'The Fed trims rates 25 bps. Layoffs at the county\'s largest distributor push unemployment higher; expect delinquencies to rise.',
+    'Recession fears peak. Loan demand is soft and members are drawing down savings. Deposit competition eases slightly.',
+    'Unemployment tops out. The Fed signals more cuts. Refinance inquiries pick up as mortgage rates ease.',
+    'Recovery begins. Auto dealers report stronger traffic. Big banks cut deposit rates faster than credit unions.',
+    'Hiring resumes. Loan demand recovers. A regional bank launches a 4.25% promo CD to pull deposits.',
+    'Steady growth. Rate environment settles. Members who left for promo rates are shopping again.',
+    'Economy expands modestly. Competitive pressure on deposit pricing returns.',
+    'Stable quarter. Card spending strong; charge-offs normalizing.',
+    'The Fed nudges rates up 25 bps on stronger growth.',
+    'Steady conditions. Loan demand healthy.',
+  ];
+  const i = Math.min(q, fed.length - 1);
+  const f = fed[i];
+  return {
+    quarter: q, fed: f, unemp: unemp[i], demand: demand[i],
+    news: news[Math.min(q, news.length - 1)],
+    mkt: {
+      checking: 0.05,
+      savings:  +(0.10 + 0.15 * f).toFixed(2),
+      mm:       +(f - 1.00).toFixed(2),
+      cd:       +(f + 0.30).toFixed(2),
+      auto:     +(f + 3.40).toFixed(2),
+      mortgage: +(6.30 + 0.5 * (f - 3.50)).toFixed(2),
+      card:     +(f + 14.0).toFixed(2),
+      personal: +(f + 8.0).toFixed(2),
+      invest:   +(f + 0.10).toFixed(2),
+      fhlb:     +(f + 0.60).toFixed(2),
+    },
+  };
+}
+
+function initialState() {
+  return {
+    members: 32000,
+    satisfaction: 58,
+    branches: 9,
+    dep:   { checking: 80e6, savings: 150e6, mm: 95e6, cd: 120e6 },
+    loans: { auto: 130e6, mortgage: 150e6, card: 25e6, personal: 45e6 },
+    yields:{ auto: 6.4, mortgage: 5.2, card: 16.5, personal: 11.0 },   // book yields
+    cdRate: 4.00,        // blended rate on CD book
+    quality:{ auto: 1.2, mortgage: 1.1, card: 1.3, personal: 1.3 },   // loss multiplier drifting toward UW target (inherited loose lending)
+    allowance: 4.2e6,
+    investments: 120e6,
+    invYield: 2.0,
+    cash: 20e6,
+    borrowings: 17e6,
+    netWorth: 38e6,
+    efficiency: 1.0,     // multiplier on variable ops cost (tech lowers it)
+    history: [],
+  };
+}
+
+function defaultDecisions() {
+  return {
+    depRate: { checking: 0.05, savings: 0.80, mm: 2.60, cd: 4.00 },
+    depOffer:{ mm: true, cd: true },
+    lnRate:  { auto: 6.90, mortgage: 6.30, card: 17.50, personal: 11.50 },
+    lnOffer: { mortgage: true, card: true },
+    underwriting: 'standard',
+    marketing: 125000,
+    tech: 125000,
+    monthlyFee: 3.0,
+    nsfFee: 28,
+    atmFee: 2.5,
+    branchChange: 0,
+  };
+}
+
+function sum(o) { return Object.values(o).reduce((a, b) => a + b, 0); }
+function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
+const ln = Math.log;
+
+// Attractiveness pieces shared across products (per team)
+function commonEffects(s, d) {
+  const mk  = 0.9 * (ln(1 + d.marketing / 250000) - ln(1.5));
+  const br  = 0.12 * 9 * ln(Math.max(1, s.branches) / 9);
+  let sat = (s.satisfaction - 60) / 20;
+  if (s.satisfaction < 45) sat -= (45 - s.satisfaction) / 8;
+  if (s.satisfaction > 75) sat += (s.satisfaction - 75) / 15;
+  return { mk, br, sat };
+}
+
+function depositScore(p, s, d, env, ce) {
+  const gap = d.depRate[p] - env.mkt[p];
+  const sens = P.depSens[p];
+  let sc = P.depElast[p] * clamp(gap, -2.5, 2.5) + sens * (0.9 * ce.mk + 1.0 * ce.br + 0.8 * ce.sat);
+  if (p === 'checking') sc -= 0.5 * Math.pow(d.monthlyFee / 5, 1.5) + 0.15 * ((d.nsfFee - 28) / 10) + 0.08 * ((d.atmFee - 2.5) / 1);
+  return sc;
+}
+function loanScore(p, s, d, env, ce) {
+  const gap = env.mkt[p] - d.lnRate[p];
+  const sens = P.lnSens[p];
+  return P.lnElast[p] * clamp(gap, -3, 3) + sens * (0.9 * ce.mk + 0.7 * ce.br + 0.8 * ce.sat);
+}
+function memberScore(s, d, ce) {
+  return 0.5 * ce.mk + 0.6 * ce.br + 0.6 * ce.sat - 0.25 * Math.pow(d.monthlyFee / 5, 1.5) - 0.08 * ((d.nsfFee - 28) / 10);
+}
+
+// Simulate one quarter for all teams. teams: [{state, decisions}] ; returns new states + reports
+function simulateQuarter(teams, env, events) {
+  const n = teams.length;
+  const ces = teams.map(t => commonEffects(t.state, t.decisions));
+  const scores = teams.map((t, i) => {
+    const sc = { dep: {}, ln: {}, mem: memberScore(t.state, t.decisions, ces[i]) };
+    DEP.forEach(p => sc.dep[p] = t.decisions.depOffer[p] === false ? -99 : depositScore(p, t.state, t.decisions, env, ces[i]));
+    LN.forEach(p => sc.ln[p] = t.decisions.lnOffer[p] === false ? -99 : loanScore(p, t.state, t.decisions, env, ces[i]));
+    return sc;
+  });
+  const others = (i, pick) => {
+    if (n < 2) return 0;
+    let tot = 0, cnt = 0;
+    scores.forEach((sc, j) => { if (j !== i) { const v = pick(sc); if (v > -50) { tot += v; cnt++; } } });
+    return cnt ? tot / cnt : 0;
+  };
+
+  return teams.map((t, i) => {
+    const s = JSON.parse(JSON.stringify(t.state));
+    const d = t.decisions;
+    const ce = ces[i];
+    const r = { env, interestIncome: 0, interestExpense: 0, feeIncome: 0, opex: 0, provision: 0, chargeoffs: 0, events: [] };
+    const startAssets = sum(s.dep) + s.borrowings + s.netWorth;
+
+    // ---------- team-specific events ----------
+    let satShock = 0, extraCost = 0, unempAdj = 0;
+    (events || []).forEach(ev => {
+      if (ev.team === null || ev.team === i) {
+        r.events.push(ev.text);
+        satShock += ev.sat || 0; extraCost += ev.cost || 0; unempAdj += ev.unemp || 0;
+      }
+    });
+
+    // ---------- deposits ----------
+    const open = Math.max(0, d.branchChange), close = Math.max(0, -d.branchChange);
+    const closeShock = close > 0 ? 22 * (close / s.branches) : 0;   // % of balances lost when branches close
+    const openBoost = (s.pendingOpen || 0) * 1.6;                     // % boost the quarter after a branch opens
+    // members (computed first so deposit balances follow members)
+    const memComp = P.compWeight * (others(i, sc => sc.mem) - scores[i].mem);
+    let mg = 0.3 + scores[i].mem - memComp - 0.15 * (env.unemp - 4.5);
+    mg = clamp(mg, -10, 8);
+    mg += (openBoost - closeShock) * 0.9;
+    const newDep = {};
+    DEP.forEach(p => {
+      if (d.depOffer[p] === false) {
+        newDep[p] = s.dep[p] * (1 - P.notOfferedRunoff / 100);
+        return;
+      }
+      const comp = P.compWeight * (others(i, sc => sc.dep[p]) - scores[i].dep[p]);
+      let g = P.depBase[p] + scores[i].dep[p] - comp;
+      // macro: in a downturn members draw down savings
+      g -= (env.unemp - 4.5) * (p === 'savings' ? 0.5 : p === 'checking' ? 0.3 : 0.1);
+      g = clamp(g, -18, 15);
+      g += (openBoost - closeShock) * P.depSens[p] + 0.6 * Math.min(0, mg) * P.depSens[p];
+      newDep[p] = s.dep[p] * (1 + g / 100);
+    });
+    // CD book rate blends toward offered rate as CDs roll (≈25%/qtr)
+    s.cdRate = 0.75 * s.cdRate + 0.25 * d.depRate.cd;
+    // interest expense on average balances
+    DEP.forEach(p => {
+      const avg = (s.dep[p] + newDep[p]) / 2;
+      const rate = p === 'cd' ? s.cdRate : d.depRate[p];
+      r.interestExpense += avg * rate / 100 / 4;
+    });
+    s.dep = newDep;
+
+    // ---------- members ----------
+    s.members = Math.round(s.members * (1 + mg / 100));
+    const chkAccts = s.members * P.chkPerMember;
+
+    // ---------- loans ----------
+    const newLoans = {}, newYield = {};
+    let totalOrig = 0;
+    LN.forEach(p => {
+      const bal = s.loans[p];
+      const paydown = bal * P.lnRunoff[p] / 100;
+      let orig = 0;
+      if (d.lnOffer[p] !== false) {
+        const comp = P.compWeight * (others(i, sc => sc.ln[p]) - scores[i].ln[p]);
+        let o = (P.lnOrig[p] + scores[i].ln[p] - comp) * env.demand * P.uwOrigMult[d.underwriting];
+        o = clamp(o, 0, 40);
+        orig = bal * o / 100;
+      }
+      totalOrig += orig;
+      const remaining = bal - paydown;
+      const nb = remaining + orig;
+      newYield[p] = nb > 0 ? (remaining * s.yields[p] + orig * d.lnRate[p]) / nb : s.yields[p];
+      // interest income on average balance at blended yield
+      r.interestIncome += ((bal + nb) / 2) * ((s.yields[p] + newYield[p]) / 2) / 100 / 4;
+      // credit quality drifts toward underwriting target
+      const target = P.uwLossMult[d.underwriting];
+      s.quality[p] = s.quality[p] + 0.3 * (target - s.quality[p]);
+      const macro = 1 + 0.28 * (env.unemp + unempAdj - 4.5);
+      const co = nb * (P.lnCO[p] / 100 / 4) * s.quality[p] * macro;
+      r.chargeoffs += co;
+      newLoans[p] = nb - co;
+    });
+    s.loans = newLoans; s.yields = newYield;
+    const grossLoans = sum(s.loans);
+    // allowance / provision
+    const targetAllow = grossLoans * (P.allowancePct / 100) * (Object.values(s.quality).reduce((a, b) => a + b, 0) / 4) * (1 + 0.15 * (env.unemp - 4.5));
+    r.provision = r.chargeoffs + (targetAllow - s.allowance);
+    s.allowance = targetAllow;
+
+    // ---------- fees ----------
+    r.feeIncome += chkAccts * d.monthlyFee * 3 * (1 - P.feeWaiverShare);
+    const nsfIncidents = chkAccts * P.nsfPerAcctQtr * Math.max(0.3, 1 - 0.012 * (d.nsfFee - 28));
+    r.feeIncome += nsfIncidents * d.nsfFee;
+    r.feeIncome += chkAccts * P.atmPerAcctQtr * d.atmFee * Math.max(0.4, 1 - 0.1 * (d.atmFee - 2.5));
+    r.feeIncome += chkAccts * P.interchangePerAcctQtr;
+    r.feeIncome += grossLoans * P.loanFeePct / 100 + totalOrig * 0.002;
+
+    // ---------- branches & opex ----------
+    s.pendingOpen = open;
+    r.opex += open * P.branchOpenCost + close * P.branchCloseCost;
+    r.opex += s.branches * P.branchCostQtr;                 // branches operating this quarter
+    r.opex += P.coreCostQtr;
+    // tech spend improves efficiency slowly (floor 0.78) and satisfaction
+    const techAbove = (d.tech - P.baselineTech) / 250000;
+    s.efficiency = clamp(s.efficiency - 0.012 * techAbove, 0.78, 1.08);
+    r.opex += startAssets * P.varOpsPctYr / 100 / 4 * s.efficiency;
+    r.opex += d.marketing + d.tech + extraCost;
+    s.branches = Math.max(1, s.branches + d.branchChange);
+
+    // ---------- satisfaction ----------
+    const depGap = DEP.reduce((a, p) => a + (d.depOffer[p] === false ? -0.5 : d.depRate[p] - env.mkt[p]), 0) / 4;
+    const lnGap = LN.reduce((a, p) => a + (d.lnOffer[p] === false ? -0.5 : env.mkt[p] - d.lnRate[p]), 0) / 4;
+    let satTarget = 66 + 7 * depGap + 4 * lnGap - 1.6 * d.monthlyFee - 0.35 * (d.nsfFee - 28) - 1.5 * (d.atmFee - 2.5)
+      + 8 * ln(s.branches / 9) + 3 * techAbove + (d.underwriting === 'loose' ? 2 : d.underwriting === 'tight' ? -3 : 0);
+    satTarget = clamp(satTarget, 15, 95);
+    s.satisfaction = clamp(s.satisfaction + 0.35 * (satTarget - s.satisfaction) + satShock - 2 * close, 10, 98);
+
+    // ---------- balance sheet plug ----------
+    const deposits = sum(s.dep);
+    s.cash = deposits * P.cashPct / 100;
+    const netLoans = grossLoans - s.allowance;
+    // investment yield: book reprices toward market as securities mature (~15%/qtr)
+    s.invYield = 0.92 * s.invYield + 0.08 * env.mkt.invest;
+    r.interestIncome += s.investments * s.invYield / 100 / 4 + s.cash * (env.fed - 0.5) / 100 / 4;
+    r.interestExpense += s.borrowings * env.mkt.fhlb / 100 / 4;
+
+    // ---------- income ----------
+    r.nii = r.interestIncome - r.interestExpense;
+    r.netIncome = r.nii - r.provision + r.feeIncome - r.opex;
+    s.netWorth += r.netIncome;
+
+    // plug: investments absorb surplus funds; shortfalls are borrowed
+    let plug = deposits + s.netWorth - netLoans - s.cash - P.fixedAssets; // = investments - borrowings
+    if (plug >= 0) { s.investments = plug; s.borrowings = 0; }
+    else { s.investments = 0; s.borrowings = -plug; }
+    const assets = netLoans + s.investments + s.cash + P.fixedAssets;
+
+    // ---------- metrics ----------
+    const avgAssets = (startAssets + assets) / 2;
+    r.metrics = {
+      assets, deposits, grossLoans, netLoans, netWorth: s.netWorth, members: s.members, branches: s.branches,
+      investments: s.investments, borrowings: s.borrowings, cash: s.cash, allowance: s.allowance,
+      roa: 100 * r.netIncome * 4 / avgAssets,
+      netWorthRatio: 100 * s.netWorth / assets,
+      nim: 100 * r.nii * 4 / avgAssets,
+      efficiencyRatio: 100 * r.opex / (r.nii + r.feeIncome),
+      loanToShare: 100 * grossLoans / deposits,
+      chargeoffRate: 100 * r.chargeoffs * 4 / grossLoans,
+      costOfFunds: 100 * r.interestExpense * 4 / (deposits + s.borrowings),
+      loanYield: 100 * (LN.reduce((a, p) => a + s.loans[p] * s.yields[p], 0) / grossLoans) / 100,
+      satisfaction: s.satisfaction,
+      opexToAssets: 100 * r.opex * 4 / avgAssets,
+      feeToAssets: 100 * r.feeIncome * 4 / avgAssets,
+      assetGrowth: 100 * (assets / startAssets - 1),
+      memberGrowth: mg,
+    };
+    r.decisions = JSON.parse(JSON.stringify(d));
+    r.quarter = env.quarter + 1;
+    r.dep = { ...s.dep }; r.loans = { ...s.loans }; r.yields = { ...s.yields };
+    s.history.push(r);
+    return s;
+  });
+}
+
+// Random events (seeded)
+function makeRng(seed) {
+  let x = seed >>> 0 || 123456789;
+  return () => { x ^= x << 13; x >>>= 0; x ^= x >> 17; x ^= x << 5; x >>>= 0; return x / 4294967296; };
+}
+function rollEvents(rng, q, nTeams, enabled) {
+  if (!enabled) return [];
+  const evs = [];
+  const roll = rng();
+  if (q >= 1 && roll < 0.30) {
+    const t = Math.floor(rng() * nTeams);
+    const kind = rng();
+    if (kind < 0.33) evs.push({ team: t, text: 'Card fraud ring hits your members. Reissue costs $350k and members are rattled.', cost: 350000, sat: -6 });
+    else if (kind < 0.66) evs.push({ team: t, text: 'A local employer group chooses your CU for payroll. Membership surge and goodwill this quarter.', cost: 0, sat: +5 });
+    else evs.push({ team: t, text: 'Core system outage takes online banking down for two days. Members are unhappy; $200k in remediation.', cost: 200000, sat: -5 });
+  }
+  return evs;
+}
+
+// ---- scoring ----
+function trailingRoa(state) {
+  const h = state.history;
+  if (!h.length) return 0;
+  const last = h.slice(-4);
+  return last.reduce((a, r) => a + r.metrics.roa, 0) / last.length;
+}
+function score(state, basis) {
+  const roa = trailingRoa(state);
+  const m = state.history.length ? state.history[state.history.length - 1].metrics : null;
+  if (!m) return { score: 0, roa: 0, penalty: 0, status: 'Not started', memberGrowth: 0, satisfaction: state.satisfaction };
+  let penalty = 0, status = 'Well capitalized';
+  if (m.netWorthRatio < 7) { penalty = (7 - m.netWorthRatio) * 50; status = 'Adequately capitalized'; }
+  if (m.netWorthRatio < 6) { status = 'Undercapitalized (PCA)'; }
+  const memberGrowth = 100 * (m.members / 32000 - 1);
+  const roaBps = roa * 100;
+  let sc = roaBps - penalty;
+  if (basis !== 'roa') sc += 4 * memberGrowth + 1 * (m.satisfaction - 55);
+  return { score: sc, roa, roaBps, penalty, status, undercap: m.netWorthRatio < 6, memberGrowth, satisfaction: m.satisfaction, netWorthRatio: m.netWorthRatio };
+}
+
+if (typeof module !== 'undefined') module.exports = { P, DEP, LN, scenario, initialState, defaultDecisions, simulateQuarter, makeRng, rollEvents, score, trailingRoa };
+
+</script>
+<script>
+// ===================== App state =====================
+const STORAGE_KEY = 'cu-sim-game';
+let game = null;          // {name, teams:[...], quarter, totalQuarters, eventsOn, seed, rankBasis, log:[], finished}
+let view = { page: 'setup', tab: 'income' };
+
+const $ = s => document.querySelector(s);
+const fmtM = v => (v < 0 ? '-' : '') + '$' + (Math.abs(v) / 1e6).toFixed(1) + 'M';
+const fmtK = v => (v < 0 ? '-' : '') + '$' + Math.round(Math.abs(v) / 1e3).toLocaleString() + 'K';
+const fmtMoney = v => Math.abs(v) >= 1e6 ? fmtM(v) : fmtK(v);
+const pct = (v, d = 2) => (isFinite(v) ? v.toFixed(d) : '—') + '%';
+const num = v => Math.round(v).toLocaleString();
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const DEPNAME = { checking: 'Checking (share draft)', savings: 'Regular savings', mm: 'Money market', cd: '12-month certificate' };
+const LNNAME = { auto: 'Auto loans', mortgage: 'First mortgages', card: 'Credit cards', personal: 'Personal / signature' };
+
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2200); }
+
+function newGame(cfg) {
+  game = {
+    name: cfg.name || 'Turnaround Challenge', totalQuarters: cfg.quarters, eventsOn: cfg.events, seed: cfg.seed,
+    rankBasis: cfg.rankBasis, quarter: 0, finished: false, log: [],
+    teams: cfg.teamNames.map(n => ({ name: n, state: initialState(), decisions: defaultDecisions(), submitted: false })),
+  };
+  view = { page: 'brief', tab: 'income' };
+  render();
+}
+
+function runQuarter() {
+  if (!game || game.finished) return;
+  const q = game.quarter;
+  const env = scenario(q);
+  const rng = makeRng(game.seed + q * 7919);
+  const events = rollEvents(rng, q, game.teams.length, game.eventsOn);
+  const states = simulateQuarter(game.teams.map(t => ({ state: t.state, decisions: t.decisions })), env, events);
+  game.teams.forEach((t, i) => { t.state = states[i]; t.submitted = false; t.decisions.branchChange = 0; });
+  game.log.push({ quarter: q + 1, env, events });
+  game.quarter = q + 1;
+  if (game.quarter >= game.totalQuarters) game.finished = true;
+  view.page = game.finished ? 'board' : 'facilitator';
+  render();
+  toast(game.finished ? 'Final quarter complete — see the leaderboard' : `Quarter ${game.quarter} results are in`);
+}
+
+// ===================== Export / import =====================
+function exportGame() {
+  const blob = new Blob([JSON.stringify(game)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `${game.name.replace(/\W+/g, '-').toLowerCase()}-q${game.quarter}.json`; a.click();
+}
+$('#importFile').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = () => { try { game = JSON.parse(r.result); view.page = 'brief'; render(); toast('Game loaded'); } catch (err) { toast('That file is not a saved game'); } };
+  r.readAsText(f); e.target.value = '';
+});
+
+// ===================== Rendering =====================
+function render() {
+  renderNav();
+  const m = $('#main');
+  if (!game) { m.innerHTML = renderSetup(); setupTeams(); return; }
+  let html = renderTopbar();
+  if (view.page === 'brief') html += renderBrief();
+  else if (view.page === 'facilitator') html += renderFacilitator();
+  else if (view.page === 'board') html += renderBoard();
+  else if (view.page.startsWith('team')) html += renderTeam(+view.page.slice(4));
+  m.innerHTML = html;
+  window.scrollTo(0, 0);
+}
+
+function navItems() {
+  if (!game) return [{ id: 'setup', label: 'New game' }];
+  const items = [{ id: 'brief', label: 'Briefing' }];
+  game.teams.forEach((t, i) => items.push({ id: 'team' + i, label: t.name, dot: t.submitted }));
+  items.push({ id: 'facilitator', label: 'Facilitator' }, { id: 'board', label: 'Leaderboard' });
+  return items;
+}
+function renderNav() {
+  const items = navItems();
+  $('#rail').innerHTML = `
+    <div class="brand">Ledger<small>Credit union turnaround simulation</small></div>
+    ${items.map((it, k) => `${k === 1 ? '<div class="group">Teams</div>' : ''}${it.id === 'facilitator' ? '<div class="group">Game control</div>' : ''}
+      <button class="nav ${view.page === it.id ? 'active' : ''}" onclick="go('${it.id}')"><span>${esc(it.label)}</span>${it.dot !== undefined ? `<span class="dot ${it.dot ? 'ok' : ''}" title="${it.dot ? 'Decisions submitted' : 'Waiting for decisions'}"></span>` : ''}</button>`).join('')}
+    <div class="spacer"></div>
+    ${game ? `<div class="actions"><button class="btn sm" onclick="exportGame()">Save game file</button><button class="btn sm" onclick="$('#importFile').click()">Load</button></div>
+    <button class="btn sm danger" style="margin-top:6px" onclick="if(confirm('Start a new game? Unsaved progress is lost.')){game=null;view.page='setup';render()}">New game</button>` :
+    `<button class="btn sm" onclick="$('#importFile').click()">Load a saved game</button>`}`;
+  $('#mobilenav').innerHTML = items.map(it => `<button class="${view.page === it.id ? 'active' : ''}" onclick="go('${it.id}')">${esc(it.label)}${it.dot ? ' ✓' : ''}</button>`).join('') +
+    (game ? `<button onclick="exportGame()">Save</button>` : '') + `<button onclick="$('#importFile').click()">Load</button>`;
+}
+function go(page) { view.page = page; render(); }
+
+function renderTopbar() {
+  const n = game.totalQuarters;
+  const strip = Array.from({ length: n }, (_, i) => `<div class="q ${i < game.quarter ? 'done' : (i === game.quarter && !game.finished ? 'now' : '')}" title="Quarter ${i + 1}">Q${i + 1}</div>`).join('');
+  const status = game.finished ? 'Game complete' : `Deciding for quarter ${game.quarter + 1} of ${n} · ${game.teams.filter(t => t.submitted).length}/${game.teams.length} teams submitted`;
+  return `<div id="topbar"><div><h1>${esc(game.name)}</h1><div class="muted small">${status}</div></div><div class="qstrip">${strip}</div></div>`;
+}
+
+// ---------- Setup ----------
+function renderSetup() {
+  const names = ['Riverbend CU', 'Summit Federal', 'Harbor Light CU', 'Prairie Trust', 'Ironworks FCU', 'Cascade Community', 'Meridian CU', 'Northline Federal'];
+  return `<div class="setup">
+    <h1 style="margin-bottom:6px">Set up a new game</h1>
+    <p class="muted" style="margin-top:0">Every team inherits the same struggling credit union: $500M in assets, nine branches, 32,000 members and a return on assets of 0.10%. Each quarter, teams set rates, fees, marketing, lending standards and branch counts. The facilitator runs the quarter and everyone sees their results.</p>
+    <div class="panel">
+      <div class="field"><label for="gname">Game name</label><input id="gname" type="text" value="Turnaround Challenge"></div>
+      <div class="field"><label for="nteams">Number of teams</label><select id="nteams" onchange="setupTeams()">${[1,2,3,4,5,6,7,8].map(n => `<option ${n === 3 ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+      <div class="field"><label>Team names</label><div class="teamnames" id="teamnames"></div></div>
+      <div class="field"><label for="nq">Quarters to play</label><select id="nq">${[4,6,8,10,12].map(n => `<option ${n === 8 ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+      <div class="field"><label for="events">Random events</label><select id="events"><option value="1">On — fraud, outages, payroll wins can hit a team</option><option value="0">Off — pure decision-driven results</option></select></div>
+      <div class="field"><label for="basis">How winners are ranked</label><select id="basis"><option value="board">Board scorecard — ROA plus membership growth and member satisfaction</option><option value="roa">ROA only — trailing four-quarter return on assets</option></select></div>
+      <div class="field"><label for="seed">Scenario seed</label><input id="seed" type="number" value="${Math.floor(Math.random() * 9000) + 1000}"></div>
+    </div>
+    <div class="actions"><button class="btn primary" onclick="startFromSetup()">Start game</button><span class="muted small">Game state lives in this browser tab. Use “Save game file” from the menu to keep a copy between sessions.</span></div>
+  </div>`;
+}
+function setupTeams() {
+  const n = +$('#nteams').value;
+  const defaults = ['Riverbend CU', 'Summit Federal', 'Harbor Light CU', 'Prairie Trust', 'Ironworks FCU', 'Cascade Community', 'Meridian CU', 'Northline Federal'];
+  const box = $('#teamnames');
+  const existing = Array.from(box.querySelectorAll('input')).map(i => i.value);
+  box.innerHTML = Array.from({ length: n }, (_, i) => `<input type="text" value="${esc(existing[i] || defaults[i])}">`).join('');
+}
+function startFromSetup() {
+  newGame({
+    name: $('#gname').value.trim(), quarters: +$('#nq').value, events: $('#events').value === '1', rankBasis: $('#basis').value,
+    seed: +$('#seed').value || 4242, teamNames: Array.from($('#teamnames').querySelectorAll('input')).map((i, k) => i.value.trim() || `Team ${k + 1}`),
+  });
+}
+
+// ---------- Briefing ----------
+function renderBrief() {
+  const s = initialState(); const d = defaultDecisions(); const env = scenario(0);
+  const dep = Object.values(s.dep).reduce((a, b) => a + b), ln = Object.values(s.loans).reduce((a, b) => a + b);
+  const assets = ln - s.allowance + s.investments + s.cash + P.fixedAssets;
+  return `<div class="grid2">
+  <div>
+    <div class="panel">
+      <h2>The situation</h2>
+      <p>You have just been appointed to run a $500 million community credit union that earned 0.10% on its assets last year. The examiners are watching. The board wants a plan.</p>
+      <p>The problems are structural: nine branches for a membership that would be well served by five or six, operating costs near 3.6% of assets against a peer average around 2.8%, deposits priced above the market, an investment portfolio locked in at 2.0%, and a loan book underwritten loosely in the last two years that is now producing charge-offs of about 1.2%.</p>
+      <p>Assets are still growing, which is part of the problem: growth funded by expensive deposits and put to work in a 2% bond book earns nothing.</p>
+      <h3>What you control each quarter</h3>
+      <ul>
+        <li>Deposit rates on four products, and whether to offer money market and certificate accounts at all</li>
+        <li>Loan rates on four products, whether to offer mortgages and cards, and how tight underwriting is</li>
+        <li>Marketing and digital investment budgets</li>
+        <li>Monthly checking, overdraft and out-of-network ATM fees</li>
+        <li>Branches to open (cost $1.0M each, opens next quarter) or close ($300K severance and lease exit, members and balances walk)</li>
+      </ul>
+      <h3>How the market responds</h3>
+      <ul>
+        <li>Rate gaps to market drive flows — certificates and money market are highly rate-sensitive, checking is not</li>
+        <li>Marketing, branch reach and member satisfaction shape all growth; they also determine how much business rival teams pull away from you</li>
+        <li>Loose underwriting boosts volume now and losses for the next year; tight underwriting does the reverse</li>
+        <li>Surplus funds go into investments at market yields; shortfalls are borrowed from the FHLB at a premium</li>
+        <li>Digital spending slowly lowers your operating cost per dollar of assets and lifts satisfaction</li>
+      </ul>
+      <h3>Winning</h3>
+      <p>${game.rankBasis === 'roa' ? 'Teams are ranked on trailing four-quarter ROA.' : 'Teams are ranked on a board scorecard: trailing four-quarter ROA in basis points, plus 4 points for every 1% of membership growth since the start, plus 1 point for every satisfaction point above 55.'} A net worth ratio below 7% costs 50 points per percentage point; below 6% the regulator steps in and the team cannot place first.</p>
+    </div>
+  </div>
+  <div>
+    <div class="panel">
+      <h2>Opening balance sheet</h2>
+      <table class="ledger">
+        <tr class="head"><td>Assets</td><td></td></tr>
+        <tr class="sub"><td>Cash</td><td>${fmtM(s.cash)}</td></tr>
+        <tr class="sub"><td>Investments (yielding 2.0%)</td><td>${fmtM(s.investments)}</td></tr>
+        ${LN.map(p => `<tr class="sub"><td>${LNNAME[p]} (${pct(s.yields[p], 1)})</td><td>${fmtM(s.loans[p])}</td></tr>`).join('')}
+        <tr class="sub"><td>Allowance for loan losses</td><td>(${fmtM(s.allowance)})</td></tr>
+        <tr class="sub"><td>Premises &amp; equipment</td><td>${fmtM(P.fixedAssets)}</td></tr>
+        <tr class="total"><td>Total assets</td><td>${fmtM(assets)}</td></tr>
+        <tr class="head"><td>Liabilities &amp; net worth</td><td></td></tr>
+        ${DEP.map(p => `<tr class="sub"><td>${DEPNAME[p]} (${pct(p === 'cd' ? s.cdRate : d.depRate[p])})</td><td>${fmtM(s.dep[p])}</td></tr>`).join('')}
+        <tr class="sub"><td>FHLB borrowings</td><td>${fmtM(s.borrowings)}</td></tr>
+        <tr class="sub"><td>Net worth (${pct(100 * s.netWorth / assets, 1)})</td><td>${fmtM(s.netWorth)}</td></tr>
+        <tr class="total"><td>Total</td><td>${fmtM(dep + s.borrowings + s.netWorth)}</td></tr>
+      </table>
+    </div>
+    <div class="panel">
+      <h2>Starting position</h2>
+      <div class="stats">
+        <div class="stat"><div class="l">ROA, last year</div><div class="v">0.10%</div></div>
+        <div class="stat"><div class="l">Members</div><div class="v">32,000</div></div>
+        <div class="stat"><div class="l">Branches</div><div class="v">9</div></div>
+        <div class="stat"><div class="l">Satisfaction</div><div class="v">58</div></div>
+      </div>
+      <table class="ledger">
+        <tr><td>Net interest margin</td><td>3.4%</td></tr>
+        <tr><td>Operating expense / assets</td><td>3.6%</td></tr>
+        <tr><td>Net charge-offs</td><td>1.2%</td></tr>
+        <tr><td>Fee income / assets</td><td>0.75%</td></tr>
+        <tr><td>Efficiency ratio</td><td>84%</td></tr>
+        <tr><td>Loans / shares</td><td>79%</td></tr>
+      </table>
+    </div>
+    <div class="panel">
+      <h2>Market this quarter</h2>
+      ${renderMarket(env)}
+    </div>
+  </div></div>`;
+}
+function renderMarket(env) {
+  return `<div class="news">${esc(env.news)}</div>
+  <table class="ledger"><thead><tr><th>Indicator</th><th>Level</th></tr></thead>
+  <tr><td>Fed funds rate</td><td>${pct(env.fed)}</td></tr><tr><td>Unemployment</td><td>${pct(env.unemp, 1)}</td></tr><tr><td>Loan demand index</td><td>${env.demand.toFixed(2)}</td></tr>
+  <tr class="head"><td>Market deposit rates</td><td></td></tr>${DEP.map(p => `<tr class="sub"><td>${DEPNAME[p]}</td><td>${pct(env.mkt[p])}</td></tr>`).join('')}
+  <tr class="head"><td>Market loan rates</td><td></td></tr>${LN.map(p => `<tr class="sub"><td>${LNNAME[p]}</td><td>${pct(env.mkt[p])}</td></tr>`).join('')}
+  <tr class="head"><td>Wholesale</td><td></td></tr><tr class="sub"><td>Investment yield</td><td>${pct(env.mkt.invest)}</td></tr><tr class="sub"><td>FHLB borrowing rate</td><td>${pct(env.mkt.fhlb)}</td></tr></table>`;
+}
+
+// ---------- Team page ----------
+function renderTeam(i) {
+  const t = game.teams[i]; const s = t.state; const h = s.history; const last = h[h.length - 1]; const prev = h[h.length - 2];
+  const env = scenario(game.quarter);
+  const lastLog = game.log[game.log.length - 1];
+  const myEvents = last ? last.events : [];
+  return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+      <h2>${esc(t.name)}</h2>
+      <span class="chip ${t.submitted ? 'ok' : 'wait'}">${game.finished ? 'Final' : t.submitted ? `Decisions submitted for Q${game.quarter + 1}` : `Awaiting decisions for Q${game.quarter + 1}`}</span></div>
+    ${renderStatStrip(last, prev)}
+    ${myEvents.map(e => `<div class="event">${esc(e)}</div>`).join('')}
+    ${game.finished ? '' : renderDecisions(i, env)}
+    <div class="grid2">
+      <div>
+        <div class="panel">
+          <h3>Return on assets by quarter</h3>
+          ${lineChart([{ name: t.name, color: 'var(--seal)', values: h.map(r => r.metrics.roa) }], { start: 0.10, refs: [{ v: 0.10, label: 'Starting ROA 0.10%' }, { v: 1.0, label: 'Peer target 1.00%' }], unit: '%', n: game.totalQuarters })}
+        </div>
+        <div class="panel">
+          <div class="tabs">${[['income', 'Income statement'], ['balance', 'Balance sheet'], ['products', 'Products'], ['history', 'Metrics history']].map(([k, l]) => `<button class="${view.tab === k ? 'active' : ''}" onclick="view.tab='${k}';render()">${l}</button>`).join('')}</div>
+          ${last ? (view.tab === 'income' ? renderIncome(last, prev) : view.tab === 'balance' ? renderBalance(last, s) : view.tab === 'products' ? renderProducts(last, s, env) : renderHistory(h)) : '<p class="muted">Results appear here after the first quarter is run.</p>'}
+        </div>
+      </div>
+      <div>
+        <div class="panel"><h3>Market in quarter ${Math.min(game.quarter + 1, game.totalQuarters)}</h3>${renderMarket(env)}</div>
+      </div>
+    </div>`;
+}
+
+function renderStatStrip(last, prev) {
+  const m = last ? last.metrics : null; const pm = prev ? prev.metrics : null;
+  const items = [
+    ['ROA (annualized)', m ? pct(m.roa) : '0.10%', m && pm ? m.roa - pm.roa : (m ? m.roa - 0.10 : null), 'pt', 2],
+    ['Net worth ratio', m ? pct(m.netWorthRatio, 1) : '7.6%', m && pm ? m.netWorthRatio - pm.netWorthRatio : null, 'pt', 2],
+    ['Net interest margin', m ? pct(m.nim) : '3.4%', m && pm ? m.nim - pm.nim : null, 'pt', 2],
+    ['Efficiency ratio', m ? pct(m.efficiencyRatio, 0) : '84%', m && pm ? m.efficiencyRatio - pm.efficiencyRatio : null, 'pt', 1, true],
+    ['Total assets', m ? fmtM(m.assets) : '$500.0M', m && pm ? 100 * (m.assets / pm.assets - 1) : null, '%', 1],
+    ['Members', m ? num(m.members) : '32,000', m && pm ? 100 * (m.members / pm.members - 1) : null, '%', 1],
+    ['Satisfaction', m ? Math.round(m.satisfaction) : 58, m && pm ? m.satisfaction - pm.satisfaction : null, '', 0],
+  ];
+  return `<div class="stats">${items.map(([l, v, d, u, dp, inv]) => {
+    let dh = '';
+    if (d !== null && d !== undefined) { const good = inv ? d < 0 : d > 0; dh = `<div class="d ${Math.abs(d) < 0.005 ? 'muted' : good ? 'pos' : 'neg'}">${d > 0 ? '+' : ''}${d.toFixed(dp)}${u} vs last quarter</div>`; }
+    return `<div class="stat"><div class="l">${l}</div><div class="v">${v}</div>${dh}</div>`;
+  }).join('')}</div>`;
+}
+
+function renderDecisions(i, env) {
+  const t = game.teams[i]; const d = t.decisions; const s = t.state;
+  const rateRow = (label, sub, path, mkt, step = 0.05) => `<div class="row"><label>${label}${sub ? `<small>${sub}</small>` : ''}</label><input type="number" step="${step}" min="0" max="30" value="${get(d, path)}" oninput="setDec(${i},'${path}',this.value)"><div class="mkt">market <b>${pct(mkt)}</b></div></div>`;
+  const offerRow = (label, path) => `<div class="row"><label>${label}</label><input type="checkbox" ${get(d, path) ? 'checked' : ''} onchange="setDec(${i},'${path}',this.checked)"><div class="mkt"></div></div>`;
+  const moneyRow = (label, sub, path, step) => `<div class="row"><label>${label}${sub ? `<small>${sub}</small>` : ''}</label><input type="number" step="${step}" min="0" value="${get(d, path)}" oninput="setDec(${i},'${path}',this.value)"><div class="mkt">per quarter</div></div>`;
+  return `<div class="panel ${t.submitted ? 'locked' : ''}" id="decisions">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px"><h2 style="margin:0">Decisions for quarter ${game.quarter + 1}</h2>
+      <div class="actions">${t.submitted ? `<button class="btn sm" onclick="unsubmit(${i})">Edit</button>` : `<button class="btn sm" onclick="copyDefaults(${i})">Reset to current</button><button class="btn primary sm" onclick="submit(${i})">Submit decisions</button>`}</div></div>
+    <div class="dec">
+      <fieldset><legend>Deposit rates</legend>
+        ${rateRow('Checking', 'dividend rate', 'depRate.checking', env.mkt.checking)}
+        ${rateRow('Regular savings', '', 'depRate.savings', env.mkt.savings)}
+        ${offerRow('Offer money market', 'depOffer.mm')}
+        ${rateRow('Money market', 'balances are rate-sensitive', 'depRate.mm', env.mkt.mm)}
+        ${offerRow('Offer 12-month certificates', 'depOffer.cd')}
+        ${rateRow('12-month certificate', 'new and renewing CDs', 'depRate.cd', env.mkt.cd)}
+      </fieldset>
+      <fieldset><legend>Loan rates</legend>
+        ${rateRow('Auto loans', 'new-car indirect and direct', 'lnRate.auto', env.mkt.auto)}
+        ${offerRow('Offer first mortgages', 'lnOffer.mortgage')}
+        ${rateRow('First mortgages', '30-year fixed', 'lnRate.mortgage', env.mkt.mortgage, 0.125)}
+        ${offerRow('Offer credit cards', 'lnOffer.card')}
+        ${rateRow('Credit cards', 'APR', 'lnRate.card', env.mkt.card, 0.25)}
+        ${rateRow('Personal loans', 'unsecured', 'lnRate.personal', env.mkt.personal, 0.25)}
+        <div class="row"><label>Underwriting standard<small>affects volume now, losses for a year</small></label><select onchange="setDec(${i},'underwriting',this.value)">${['tight', 'standard', 'loose'].map(u => `<option ${d.underwriting === u ? 'selected' : ''} value="${u}">${u[0].toUpperCase() + u.slice(1)}</option>`).join('')}</select><div class="mkt"></div></div>
+      </fieldset>
+      <fieldset><legend>Spending</legend>
+        ${moneyRow('Marketing', 'diminishing returns above $500K', 'marketing', 25000)}
+        ${moneyRow('Digital &amp; technology', 'lowers cost ratio over time', 'tech', 25000)}
+      </fieldset>
+      <fieldset><legend>Fees</legend>
+        <div class="row"><label>Monthly checking fee<small>about 42% of accounts get it waived</small></label><input type="number" step="1" min="0" max="25" value="${d.monthlyFee}" oninput="setDec(${i},'monthlyFee',this.value)"><div class="mkt">per month</div></div>
+        <div class="row"><label>Overdraft / NSF fee</label><input type="number" step="1" min="0" max="45" value="${d.nsfFee}" oninput="setDec(${i},'nsfFee',this.value)"><div class="mkt">per item</div></div>
+        <div class="row"><label>Out-of-network ATM fee</label><input type="number" step="0.25" min="0" max="6" value="${d.atmFee}" oninput="setDec(${i},'atmFee',this.value)"><div class="mkt">per withdrawal</div></div>
+      </fieldset>
+      <fieldset><legend>Branches</legend>
+        <div class="row"><label>Branches operating now</label><div style="text-align:right;font-weight:600">${s.branches}</div><div class="mkt"></div></div>
+        <div class="row"><label>Open or close this quarter<small>+ opens next quarter ($1.0M); − closes now ($300K)</small></label><input type="number" step="1" min="${1 - s.branches}" max="4" value="${d.branchChange}" oninput="setDec(${i},'branchChange',this.value)"><div class="mkt">net change</div></div>
+      </fieldset>
+    </div>
+    <div class="small muted" id="decsum${i}">${decisionSummary(i)}</div>
+  </div>`;
+}
+function get(o, path) { return path.split('.').reduce((a, k) => a[k], o); }
+function setDec(i, path, val) {
+  const t = game.teams[i]; if (t.submitted) return;
+  const keys = path.split('.'); let o = t.decisions;
+  for (let k = 0; k < keys.length - 1; k++) o = o[keys[k]];
+  const lastKey = keys[keys.length - 1];
+  if (typeof val === 'boolean') o[lastKey] = val;
+  else if (path === 'underwriting') o[lastKey] = val;
+  else { const n = parseFloat(val); if (!isNaN(n)) o[lastKey] = n; }
+  const el = document.getElementById('decsum' + i); if (el) el.innerHTML = decisionSummary(i);
+}
+function decisionSummary(i) {
+  const t = game.teams[i]; const d = t.decisions; const s = t.state;
+  const open = Math.max(0, d.branchChange), close = Math.max(0, -d.branchChange);
+  const oneTime = open * P.branchOpenCost + close * P.branchCloseCost;
+  const run = (s.branches + open) * P.branchCostQtr;
+  return `Discretionary spend this quarter: marketing ${fmtMoney(d.marketing)}, digital ${fmtMoney(d.tech)}${oneTime ? `, branch changes ${fmtMoney(oneTime)} one-time` : ''}. Branch operating cost after changes: ${fmtMoney(run)} per quarter.`;
+}
+function submit(i) { game.teams[i].submitted = true; render(); toast(`${game.teams[i].name} submitted`); }
+function unsubmit(i) { game.teams[i].submitted = false; render(); }
+function copyDefaults(i) { game.teams[i].decisions = defaultDecisions(); render(); }
+
+function renderIncome(r, prev) {
+  const row = (l, v, pv, cls = '') => `<tr class="${cls}"><td>${l}</td><td>${fmtMoney(v)}</td><td class="muted">${pv === undefined ? '' : fmtMoney(pv)}</td></tr>`;
+  return `<table class="ledger"><thead><tr><th>Quarter ${r.quarter}</th><th>This quarter</th><th>Prior</th></tr></thead>
+    ${row('Interest income', r.interestIncome, prev && prev.interestIncome)}
+    ${row('Interest expense', -r.interestExpense, prev && -prev.interestExpense)}
+    ${row('Net interest income', r.nii, prev && prev.nii, 'total')}
+    ${row('Provision for loan losses', -r.provision, prev && -prev.provision)}
+    ${row('Fee and other income', r.feeIncome, prev && prev.feeIncome)}
+    ${row('Operating expenses', -r.opex, prev && -prev.opex)}
+    ${row('Net income', r.netIncome, prev && prev.netIncome, 'total')}
+    <tr><td>Net charge-offs</td><td>${fmtMoney(r.chargeoffs)}</td><td class="muted">${prev ? fmtMoney(prev.chargeoffs) : ''}</td></tr>
+    <tr><td>ROA (annualized)</td><td>${pct(r.metrics.roa)}</td><td class="muted">${prev ? pct(prev.metrics.roa) : ''}</td></tr>
+  </table>`;
+}
+function renderBalance(r, s) {
+  const m = r.metrics;
+  return `<table class="ledger">
+    <tr class="head"><td>Assets</td><td></td></tr>
+    <tr class="sub"><td>Cash</td><td>${fmtM(m.cash)}</td></tr>
+    <tr class="sub"><td>Investments (yield ${pct(s.invYield)})</td><td>${fmtM(m.investments)}</td></tr>
+    ${LN.map(p => `<tr class="sub"><td>${LNNAME[p]} (${pct(s.yields[p])})</td><td>${fmtM(s.loans[p])}</td></tr>`).join('')}
+    <tr class="sub"><td>Allowance for loan losses</td><td>(${fmtM(m.allowance)})</td></tr>
+    <tr class="sub"><td>Premises &amp; equipment</td><td>${fmtM(P.fixedAssets)}</td></tr>
+    <tr class="total"><td>Total assets</td><td>${fmtM(m.assets)}</td></tr>
+    <tr class="head"><td>Liabilities &amp; net worth</td><td></td></tr>
+    ${DEP.map(p => `<tr class="sub"><td>${DEPNAME[p]}${p === 'cd' ? ` (book ${pct(s.cdRate)})` : ''}</td><td>${fmtM(s.dep[p])}</td></tr>`).join('')}
+    <tr class="sub"><td>FHLB borrowings</td><td>${fmtM(m.borrowings)}</td></tr>
+    <tr class="sub"><td>Net worth (${pct(m.netWorthRatio)})</td><td>${fmtM(m.netWorth)}</td></tr>
+    <tr class="total"><td>Total</td><td>${fmtM(m.deposits + m.borrowings + m.netWorth)}</td></tr>
+  </table>`;
+}
+function renderProducts(r, s, env) {
+  const prev = s.history[s.history.length - 2];
+  return `<table class="ledger"><thead><tr><th>Deposits</th><th>Balance</th><th>Change</th><th>Your rate</th><th>Market</th></tr></thead>
+    ${DEP.map(p => { const pb = prev ? prev.dep[p] : initialState().dep[p]; const ch = 100 * (s.dep[p] / pb - 1); return `<tr><td>${DEPNAME[p]}</td><td>${fmtM(s.dep[p])}</td><td class="${ch >= 0 ? 'pos' : 'neg'}">${ch >= 0 ? '+' : ''}${ch.toFixed(1)}%</td><td>${r.decisions.depOffer[p] === false ? '<span class="chip bad">not offered</span>' : pct(r.decisions.depRate[p])}</td><td class="muted">${pct(env.mkt[p])}</td></tr>`; }).join('')}
+    </table><br>
+    <table class="ledger"><thead><tr><th>Loans</th><th>Balance</th><th>Change</th><th>Book yield</th><th>Market</th></tr></thead>
+    ${LN.map(p => { const pb = prev ? prev.loans[p] : initialState().loans[p]; const ch = 100 * (s.loans[p] / pb - 1); return `<tr><td>${LNNAME[p]}</td><td>${fmtM(s.loans[p])}</td><td class="${ch >= 0 ? 'pos' : 'neg'}">${ch >= 0 ? '+' : ''}${ch.toFixed(1)}%</td><td>${pct(s.yields[p])}</td><td class="muted">${pct(env.mkt[p])}</td></tr>`; }).join('')}
+    </table>
+    <p class="small muted">Credit quality index (1.00 = standard underwriting): ${LN.map(p => `${LNNAME[p].split(' ')[0]} ${s.quality[p].toFixed(2)}`).join(' · ')}. Cost efficiency index: ${s.efficiency.toFixed(2)}.</p>`;
+}
+function renderHistory(h) {
+  const cols = [['roa', 'ROA', 2], ['netWorthRatio', 'Net worth', 1], ['nim', 'NIM', 2], ['efficiencyRatio', 'Efficiency', 0], ['opexToAssets', 'Opex/assets', 2], ['costOfFunds', 'Cost of funds', 2], ['loanYield', 'Loan yield', 2], ['chargeoffRate', 'Charge-offs', 2], ['loanToShare', 'Loans/shares', 0], ['assetGrowth', 'Asset growth', 1], ['memberGrowth', 'Member growth', 1]];
+  return `<div style="overflow-x:auto"><table class="ledger"><thead><tr><th>Q</th>${cols.map(c => `<th>${c[1]}</th>`).join('')}<th>Members</th><th>Branches</th><th>Sat.</th></tr></thead>
+    ${h.map(r => `<tr><td>${r.quarter}</td>${cols.map(c => `<td>${r.metrics[c[0]].toFixed(c[2])}%</td>`).join('')}<td>${num(r.metrics.members)}</td><td>${r.metrics.branches}</td><td>${Math.round(r.metrics.satisfaction)}</td></tr>`).join('')}
+  </table></div>`;
+}
+
+// ---------- Facilitator ----------
+function renderFacilitator() {
+  const env = scenario(game.quarter);
+  const allIn = game.teams.every(t => t.submitted);
+  const lastLog = game.log[game.log.length - 1];
+  return `<div class="grid2"><div>
+    <div class="panel">
+      <h2>${game.finished ? 'Game complete' : `Run quarter ${game.quarter + 1}`}</h2>
+      <table class="ledger"><thead><tr><th>Team</th><th>Status</th><th>Branches</th><th>Marketing</th><th>UW</th></tr></thead>
+      ${game.teams.map((t, i) => `<tr><td><a href="#" onclick="go('team${i}');return false">${esc(t.name)}</a></td><td><span class="chip ${t.submitted ? 'ok' : 'wait'}">${t.submitted ? 'Submitted' : 'Waiting'}</span></td><td>${t.state.branches}${t.decisions.branchChange ? ` (${t.decisions.branchChange > 0 ? '+' : ''}${t.decisions.branchChange})` : ''}</td><td>${fmtMoney(t.decisions.marketing)}</td><td>${t.decisions.underwriting}</td></tr>`).join('')}
+      </table>
+      ${game.finished ? `<p>All ${game.totalQuarters} quarters have been played. <a href="#" onclick="go('board');return false">See the leaderboard</a>.</p>` :
+      `<div class="actions" style="margin-top:14px">
+        <button class="btn primary" onclick="runQuarter()" ${allIn ? '' : 'disabled'}>Run quarter ${game.quarter + 1}</button>
+        ${allIn ? '' : `<button class="btn" onclick="if(confirm('Run with whatever each team has entered so far?'))runQuarter()">Run anyway</button><span class="muted small">Teams that haven\u2019t submitted run on their current entries.</span>`}
+      </div>`}
+    </div>
+    ${lastLog ? `<div class="panel"><h3>Quarter ${lastLog.quarter} events</h3>${lastLog.events.length ? lastLog.events.map(e => `<div class="event"><b>${e.team === null ? 'All teams' : esc(game.teams[e.team].name)}:</b> ${esc(e.text)}</div>`).join('') : '<p class="muted">No random events this quarter.</p>'}</div>` : ''}
+    <div class="panel"><h3>Game settings</h3>
+      <table class="ledger"><tr><td>Quarters</td><td>${game.totalQuarters}</td></tr><tr><td>Random events</td><td>${game.eventsOn ? 'On' : 'Off'}</td></tr><tr><td>Ranking</td><td>${game.rankBasis === 'roa' ? 'ROA only' : 'Board scorecard'}</td></tr><tr><td>Seed</td><td>${game.seed}</td></tr></table>
+      <div class="actions" style="margin-top:10px"><button class="btn sm" onclick="game.rankBasis=game.rankBasis==='roa'?'board':'roa';render()">Switch ranking basis</button><button class="btn sm" onclick="if(game.totalQuarters<16){game.totalQuarters++;game.finished=false;render()}">Add a quarter</button></div>
+    </div>
+  </div><div>
+    <div class="panel"><h3>Market for quarter ${Math.min(game.quarter + 1, game.totalQuarters)}</h3>${renderMarket(env)}</div>
+  </div></div>`;
+}
+
+// ---------- Leaderboard ----------
+function renderBoard() {
+  const rows = game.teams.map((t, i) => ({ i, t, sc: score(t.state, game.rankBasis) }));
+  rows.sort((a, b) => (a.sc.undercap - b.sc.undercap) || (b.sc.score - a.sc.score));
+  const played = game.quarter > 0;
+  const colors = ['#1F6F5B', '#C9962E', '#B4463A', '#3B6FA0', '#7A4E9E', '#2F8F8F', '#8C6A3F', '#5A5A5A'];
+  const series = game.teams.map((t, i) => ({ name: t.name, color: colors[i % colors.length], values: t.state.history.map(r => r.metrics.roa) }));
+  return `<div class="panel">
+    <h2>${game.finished ? 'Final standings' : `Standings after quarter ${game.quarter}`}</h2>
+    <p class="muted small">${game.rankBasis === 'roa' ? 'Ranked by trailing four-quarter ROA in basis points, less capital penalties.' : 'Board scorecard = trailing four-quarter ROA (bps) + 4 × membership growth since start (%) + (satisfaction − 55) − capital penalty.'} Teams below 6% net worth are under prompt corrective action and rank last.</p>
+    ${played ? `<div style="overflow-x:auto"><table class="ledger"><thead><tr><th>#</th><th>Team</th><th>Score</th><th>ROA (4Q)</th><th>Latest ROA</th><th>Net worth</th><th>Assets</th><th>Members</th><th>Satisfaction</th><th>Capital status</th></tr></thead>
+    ${rows.map((r, k) => { const m = r.t.state.history[r.t.state.history.length - 1].metrics; return `<tr class="${k === 0 && !r.sc.undercap ? 'rank1' : ''}"><td>${k + 1}</td><td><a href="#" onclick="go('team${r.i}');return false">${esc(r.t.name)}</a></td><td><b>${r.sc.score.toFixed(0)}</b></td><td>${pct(r.sc.roa)}</td><td>${pct(m.roa)}</td><td>${pct(m.netWorthRatio, 1)}</td><td>${fmtM(m.assets)}</td><td>${num(m.members)} <span class="${r.sc.memberGrowth >= 0 ? 'pos' : 'neg'} small">(${r.sc.memberGrowth >= 0 ? '+' : ''}${r.sc.memberGrowth.toFixed(1)}%)</span></td><td>${Math.round(m.satisfaction)}</td><td><span class="chip ${r.sc.undercap ? 'bad' : r.sc.penalty ? 'wait' : 'ok'}">${r.sc.status}</span></td></tr>`; }).join('')}
+    </table></div>` : '<p class="muted">Standings appear once the first quarter has been run.</p>'}
+  </div>
+  ${played ? `<div class="panel"><h3>ROA by quarter, all teams</h3>${lineChart(series, { start: 0.10, refs: [{ v: 0.10, label: 'Start 0.10%' }, { v: 1.0, label: 'Peer 1.00%' }], unit: '%', n: game.totalQuarters })}
+    <div class="legend">${series.map(s => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join('')}</div></div>
+  <div class="grid2">
+    <div class="panel"><h3>Net worth ratio</h3>${lineChart(game.teams.map((t, i) => ({ color: colors[i % colors.length], values: t.state.history.map(r => r.metrics.netWorthRatio) })), { start: 7.6, refs: [{ v: 7, label: 'Well capitalized 7%' }], unit: '%', n: game.totalQuarters, height: 200 })}</div>
+    <div class="panel"><h3>Members</h3>${lineChart(game.teams.map((t, i) => ({ color: colors[i % colors.length], values: t.state.history.map(r => r.metrics.members / 1000) })), { start: 32, refs: [], unit: 'K', n: game.totalQuarters, height: 200 })}</div>
+  </div>` : ''}`;
+}
+
+// ---------- SVG line chart ----------
+function lineChart(series, o) {
+  const W = 640, H = o.height || 260, padL = 46, padR = 14, padT = 14, padB = 28;
+  const n = o.n || 8;
+  let vals = [o.start, ...o.refs.map(r => r.v)];
+  series.forEach(s => vals = vals.concat(s.values));
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  const span = Math.max(hi - lo, 0.5); lo -= span * 0.12; hi += span * 0.12;
+  const x = q => padL + (q / n) * (W - padL - padR);
+  const y = v => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
+  const ticks = 4; let g = '';
+  for (let k = 0; k <= ticks; k++) { const v = lo + (hi - lo) * k / ticks; g += `<line class="grid" x1="${padL}" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}"/><text x="${padL - 6}" y="${y(v) + 4}" text-anchor="end">${v.toFixed(o.unit === 'K' ? 1 : 2)}${o.unit}</text>`; }
+  for (let q = 0; q <= n; q++) g += `<text x="${x(q)}" y="${H - 8}" text-anchor="middle">${q === 0 ? 'Start' : 'Q' + q}</text>`;
+  const refs = o.refs.map(r => `<line class="ref" x1="${padL}" x2="${W - padR}" y1="${y(r.v)}" y2="${y(r.v)}"/><text x="${W - padR}" y="${y(r.v) - 4}" text-anchor="end">${r.label}</text>`).join('');
+  const lines = series.map(s => {
+    const pts = [[x(0), y(o.start)], ...s.values.map((v, k) => [x(k + 1), y(v)])];
+    return `<polyline fill="none" stroke="${s.color}" stroke-width="2.5" stroke-linejoin="round" points="${pts.map(p => p.join(',')).join(' ')}"/>` + pts.slice(1).map(p => `<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="${s.color}"/>`).join('');
+  }).join('');
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Line chart">${g}${refs}<line class="axis" x1="${padL}" x2="${W - padR}" y1="${H - padB}" y2="${H - padB}"/>${lines}</svg>`;
+}
+
+render();
+</script>
+</body>
+</html>
