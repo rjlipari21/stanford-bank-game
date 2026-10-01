@@ -1,3 +1,3 @@
 # Stanford Bank Game
 
-Play it at https://rjlipari21.github.io/stanford-bank-game/ (once GitHub Pages is on).
+Play it at https://game.iqtrade.work/ (once GitHub Pages is on).
